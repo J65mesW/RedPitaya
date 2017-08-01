@@ -1,5 +1,5 @@
 /**
- * $Id: red_pitaya_pid_tb.v 961 2014-01-21 11:40:39Z matej.oblak $
+ * $Id: pid_tb.v 961 2014-01-21 11:40:39Z matej.oblak $
  *
  * @brief Red Pitaya MIMO PID testbench.
  *
@@ -17,14 +17,14 @@
  *
  * Testbench for MIMO PID controller.
  *
- * Testing red_pitaya_pid module using only PID11 section. For system which it
+ * Testing pid module using only PID11 section. For system which it
  * controls simple model is used (acts as system of first order). 
  * 
  */
 
 `timescale 1ns / 1ps
 
-module red_pitaya_pid_tb #(
+module pid_tb #(
   // time periods
   realtime  TP = 8.0ns  // 125MHz
 );
@@ -59,7 +59,6 @@ logic [ 14-1: 0] dat_b_out       ;
 
 logic [ 32-1: 0] sys_addr        ;
 logic [ 32-1: 0] sys_wdata       ;
-logic [  4-1: 0] sys_sel         ;
 logic            sys_wen         ;
 logic            sys_ren         ;
 logic [ 32-1: 0] sys_rdata       ;
@@ -133,7 +132,6 @@ sys_bus_model bus (
   // bus protocol signals
   .sys_addr     (sys_addr ),
   .sys_wdata    (sys_wdata),
-  .sys_sel      (sys_sel  ),
   .sys_wen      (sys_wen  ),
   .sys_ren      (sys_ren  ),
   .sys_rdata    (sys_rdata),
@@ -141,7 +139,7 @@ sys_bus_model bus (
   .sys_ack      (sys_ack  ) 
 );
 
-red_pitaya_pid pid (
+pid pid (
    // signals
   .clk_i        (clk      ),  // clock
   .rstn_i       (rstn     ),  // reset - active low
@@ -152,7 +150,6 @@ red_pitaya_pid pid (
    // System bus
   .sys_addr     (sys_addr ),
   .sys_wdata    (sys_wdata),
-  .sys_sel      (sys_sel  ),
   .sys_wen      (sys_wen  ),
   .sys_ren      (sys_ren  ),
   .sys_rdata    (sys_rdata),
@@ -165,9 +162,9 @@ red_pitaya_pid pid (
 ////////////////////////////////////////////////////////////////////////////////
 
 initial begin
-  $dumpfile("red_pitaya_pid_tb.vcd");
-  $dumpvars(0, red_pitaya_pid_tb);
+  $dumpfile("pid_tb.vcd");
+  $dumpvars(0, pid_tb);
 end
 
-endmodule: red_pitaya_pid_tb
+endmodule: pid_tb
 

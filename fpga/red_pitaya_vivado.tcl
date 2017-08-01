@@ -2,13 +2,22 @@
 # Vivado tcl script for building RedPitaya FPGA in non project mode
 #
 # Usage:
-# vivado -mode tcl -source red_pitaya_vivado.tcl
+# vivado -mode tcl -source red_pitaya_vivado.tcl -tclargs projectname
 ################################################################################
+
+cd prj/$::argv
+
+################################################################################
+# install UltraFast Design Methodology from TCL Store
+################################################################################
+
+tclapp::install -quiet ultrafast
 
 ################################################################################
 # define paths
 ################################################################################
 
+set path_brd brd
 set path_rtl rtl
 set path_ip  ip
 set path_sdc sdc
@@ -20,6 +29,12 @@ file mkdir $path_out
 file mkdir $path_sdk
 
 ################################################################################
+# list board files
+################################################################################
+
+set_param board.repoPaths [list $path_brd]
+
+################################################################################
 # setup an in memory project
 ################################################################################
 
@@ -27,24 +42,17 @@ set part xc7z010clg400-1
 
 create_project -in_memory -part $part
 
-# experimental attempts to avoid a warning
-#get_projects
-#get_designs
-#list_property  [current_project]
-#set_property FAMILY 7SERIES [current_project]
-#set_property SIM_DEVICE 7SERIES [current_project]
-
 ################################################################################
 # create PS BD (processing system block design)
 ################################################################################
 
-# file was created from GUI using "write_bd_tcl -force ip/system_bd.tcl"
+# file was created from GUI using "write_bd_tcl -force ip/system.tcl"
 # create PS BD
-source                            $path_ip/system_bd.tcl
+source                            $path_ip/system.tcl
 
 # generate SDK files
 generate_target all [get_files    system.bd]
-write_hwdef              -file    $path_sdk/red_pitaya.hwdef
+write_hwdef -force       -file    $path_sdk/red_pitaya.hwdef
 
 ################################################################################
 # read files:
@@ -53,29 +61,20 @@ write_hwdef              -file    $path_sdk/red_pitaya.hwdef
 # 3. constraints
 ################################################################################
 
-# template
-#read_verilog                      $path_rtl/...
+add_files -quiet                  [glob -nocomplain ../../$path_rtl/*_pkg.sv]
+add_files -quiet                  [glob -nocomplain       $path_rtl/*_pkg.sv]
+add_files                         ../../$path_rtl
+add_files                               $path_rtl
 
-read_verilog                      .srcs/sources_1/bd/system/hdl/system_wrapper.v
+#read_xdc                          $path_sdc/red_pitaya.xdc
+read_xdc                          ../../$path_sdc/red_pitaya.xdc
 
-read_verilog                      $path_rtl/axi_master.v
-read_verilog                      $path_rtl/axi_slave.v
-read_verilog                      $path_rtl/axi_wr_fifo.v
+################################################################################
+# ser parameter containing Git hash
+################################################################################
 
-read_verilog                      $path_rtl/red_pitaya_ams.v
-read_verilog                      $path_rtl/red_pitaya_asg_ch.v
-read_verilog                      $path_rtl/red_pitaya_asg.v
-read_verilog                      $path_rtl/red_pitaya_dfilt1.v
-read_verilog                      $path_rtl/red_pitaya_hk.v
-read_verilog                      $path_rtl/red_pitaya_pid_block.v
-read_verilog                      $path_rtl/red_pitaya_pid.v
-read_verilog                      $path_rtl/red_pitaya_pll.sv
-read_verilog                      $path_rtl/red_pitaya_ps.v
-read_verilog                      $path_rtl/red_pitaya_pwm.sv
-read_verilog                      $path_rtl/red_pitaya_scope.v
-read_verilog                      $path_rtl/red_pitaya_top.v
-
-read_xdc                          $path_sdc/red_pitaya.xdc
+set gith [exec git log -1 --format="%H"]
+set_property generic "GITH=160'h$gith" [current_fileset]
 
 ################################################################################
 # run synthesis
@@ -119,8 +118,11 @@ report_clock_utilization -file    $path_out/clock_util.rpt
 report_utilization       -file    $path_out/post_route_util.rpt
 report_power             -file    $path_out/post_route_power.rpt
 report_drc               -file    $path_out/post_imp_drc.rpt
+report_io                -file    $path_out/post_imp_io.rpt
 #write_verilog            -force   $path_out/bft_impl_netlist.v
 #write_xdc -no_fixed_only -force   $path_out/bft_impl.xdc
+
+xilinx::ultrafast::report_io_reg -verbose -file $path_out/post_route_iob.rpt
 
 ################################################################################
 # generate a bitstream
@@ -128,13 +130,14 @@ report_drc               -file    $path_out/post_imp_drc.rpt
 
 set_property BITSTREAM.GENERAL.COMPRESS TRUE [current_design]
 
-write_bitstream -force $path_out/red_pitaya.bit
+write_bitstream -force            $path_out/red_pitaya.bit
+write_bitstream -force -bin_file  $path_out/red_pitaya
 
 ################################################################################
 # generate system definition
 ################################################################################
 
-write_sysdef             -hwdef   $path_sdk/red_pitaya.hwdef \
+write_sysdef -force      -hwdef   $path_sdk/red_pitaya.hwdef \
                          -bitfile $path_out/red_pitaya.bit \
                          -file    $path_sdk/red_pitaya.sysdef
 

@@ -2,22 +2,28 @@
 # versioning system
 ################################################################################
 
-BUILD_NUMBER ?= 0
-REVISION ?= devbuild
 VER := $(shell cat apps-tools/ecosystem/info/info.json | grep version | sed -e 's/.*:\ *\"//' | sed -e 's/-.*//')
-GIT_BRANCH_LOCAL = $(shell echo $(GIT_BRANCH) | sed -e 's/.*\///')
+BUILD_NUMBER ?= 0
+REVISION ?= $(shell git rev-parse --short HEAD)
 VERSION = $(VER)-$(BUILD_NUMBER)-$(REVISION)
 export BUILD_NUMBER
 export REVISION
 export VERSION
 
+SUBMODULE_UBT = "redpitaya-v2016.4"
+SUBMODULE_LIN = "redpitaya-v2016.2-RP3"
+SUBMODULE_APP = $(shell git submodule status Applications)
+
 define GREET_MSG
 ##############################################################################
 # Red Pitaya GNU/Linux Ecosystem
 # Version: $(VER)
-# Branch: $(GIT_BRANCH_LOCAL)
 # Build: $(BUILD_NUMBER)
+# Branch: $(GIT_LOCAL_BRANCH)
 # Commit: $(GIT_COMMIT)
+# U-Boot: $(SUBMODULE_UBT)
+# Linux Kernel: $(SUBMODULE_LIN)
+# Pro Applications: $(SUBMODULE_APP)
 ##############################################################################
 endef
 export GREET_MSG
@@ -52,9 +58,9 @@ $(INSTALL_DIR):
 # X86 build (Vivado FPGA synthesis, FSBL, devicetree, U-Boot, Linux kernel)
 ################################################################################
 
-UBOOT_TAG     = xilinx-v2016.2
-LINUX_TAG     = xilinx-v2016.1
-DTREE_TAG     = xilinx-v2016.2
+UBOOT_TAG     = redpitaya-v2016.4
+LINUX_TAG     = redpitaya-v2016.2-RP4
+DTREE_TAG     = xilinx-v2016.4
 
 UBOOT_DIR     = $(TMP)/u-boot-xlnx-$(UBOOT_TAG)
 LINUX_DIR     = $(TMP)/linux-xlnx-$(LINUX_TAG)
@@ -65,13 +71,9 @@ LINUX_TAR     = $(DL)/linux-xlnx-$(LINUX_TAG).tar.gz
 DTREE_TAR     = $(DL)/device-tree-xlnx-$(DTREE_TAG).tar.gz
 
 # it is possible to use an alternative download location (local) by setting environment variables
-UBOOT_URL     ?= https://github.com/Xilinx/u-boot-xlnx/archive/$(UBOOT_TAG).tar.gz
-LINUX_URL     ?= https://github.com/Xilinx/linux-xlnx/archive/$(LINUX_TAG).tar.gz
+UBOOT_URL     ?= https://github.com/RedPitaya/u-boot-xlnx/archive/$(UBOOT_TAG).tar.gz
+LINUX_URL     ?= https://github.com/RedPitaya/linux-xlnx/archive/$(LINUX_TAG).tar.gz
 DTREE_URL     ?= https://github.com/Xilinx/device-tree-xlnx/archive/$(DTREE_TAG).tar.gz
-
-UBOOT_GIT     ?= https://github.com/Xilinx/u-boot-xlnx.git
-LINUX_GIT     ?= https://github.com/Xilinx/linux-xlnx.git
-DTREE_GIT     ?= https://github.com/Xilinx/device-tree-xlnx.git
 
 LINUX_CFLAGS = "-O2 -mtune=cortex-a9 -mfpu=neon -mfloat-abi=hard"
 UBOOT_CFLAGS = "-O2 -mtune=cortex-a9 -mfpu=neon -mfloat-abi=hard"
@@ -80,15 +82,33 @@ UBOOT_CFLAGS = "-O2 -mtune=cortex-a9 -mfpu=neon -mfloat-abi=hard"
 # FPGA build provides: $(FSBL), $(FPGA), $(DEVICETREE).
 ################################################################################
 
-FPGA_DIR = fpga2
-
-FPGA = $(FPGA_DIR)/out/red_pitaya.bit
-FSBL = $(FPGA_DIR)/sdk/fsbl/executable.elf
+FPGA_PRJ_LST = classic logic v0.94 axi4lite mercury
+FPGA_PRJ_LST = classic logic v0.94 mercury
+FPGA_PRJ = logic
 
 .PHONY: fpga
 
-fpga: $(DTREE_DIR)
-	make -C $(FPGA_DIR)
+fpga: $(INSTALL_DIR)/fpga
+
+$(INSTALL_DIR)/fpga: $(DTREE_DIR)
+	mkdir -p $(INSTALL_DIR)/fpga
+	# compile FPGA projects
+	for ITM in $(FPGA_PRJ_LST); do \
+	    make -C fpga PRJ=$$ITM; \
+	    mkdir -p $(INSTALL_DIR)/fpga/$$ITM; \
+	    cp    fpga/prj/$$ITM/out/red_pitaya.bit       $(INSTALL_DIR)/fpga/$$ITM/fpga.bit; \
+	    cp    fpga/prj/$$ITM/sdk/fsbl/executable.elf  $(INSTALL_DIR)/fpga/$$ITM/fsbl.elf; \
+	    cp -r fpga/prj/$$ITM/sdk/dts                  $(INSTALL_DIR)/fpga/$$ITM         ; \
+	    cp    fpga/prj/$$ITM/dts/*                    $(INSTALL_DIR)/fpga/$$ITM/dts/    ; \
+	    tools/dtc/dtc -@ -I dts -O dtb -o $(INSTALL_DIR)/fpga/$$ITM/fpga.dtbo -i fpga/prj/$$ITM/dts -i fpga/dts fpga/prj/$$ITM/dts/fpga.dtso;\
+	done
+	# copy archived FPGA bitstream images and decompress them
+	cp fpga/archive/*.xz  $(INSTALL_DIR)/fpga
+	cd                    $(INSTALL_DIR)/fpga; xz -df *.xz
+	# backward compatibility, TODO, should be removed at next OS release
+	cp $(INSTALL_DIR)/fpga/logic/fpga.bit    $(INSTALL_DIR)/fpga/fpga_la.bit
+	cp $(INSTALL_DIR)/fpga/v0.94/fpga.bit    $(INSTALL_DIR)/fpga/fpga_0.94.bit
+	cp $(INSTALL_DIR)/fpga/classic/fpga.bit  $(INSTALL_DIR)/fpga/fpga_classic.bit
 
 ################################################################################
 # U-Boot build provides: $(UBOOT)
@@ -108,14 +128,6 @@ $(UBOOT_TAR): | $(DL)
 $(UBOOT_DIR): $(UBOOT_TAR)
 	mkdir -p $@
 	tar -zxf $< --strip-components=1 --directory=$@
-	# Red Pitaya configuration
-	cp patches/u-boot/zynq-red-pitaya.dts       $@/arch/arm/dts/zynq-red-pitaya.dts
-	cp patches/u-boot/zynq_red_pitaya_defconfig $@/configs/zynq_red_pitaya_defconfig
-	cp patches/u-boot/zynq_red_pitaya.h         $@/include/configs/zynq_red_pitaya.h
-	patch -d $@ -p 1 < patches/u-boot/u-boot-xlnx-$(UBOOT_TAG)-config.patch
-	# add Lantiq PHY driver
-	cp patches/u-boot/lantiq.c                  $@/drivers/net/phy/lantiq.c
-	patch -d $@ -p 1 < patches/u-boot/u-boot-xlnx-$(UBOOT_TAG)-lantiq.patch
 
 $(UBOOT): $(UBOOT_DIR) $(TMP)
 	make -C $< arch=ARM zynq_red_pitaya_defconfig
@@ -141,21 +153,6 @@ $(LINUX_TAR): | $(DL)
 $(LINUX_DIR): $(LINUX_TAR)
 	mkdir -p $@
 	tar -zxf $< --strip-components=1 --directory=$@
-#	git clone -b fix_cyclic https://github.com/na1pir/linux-xlnx.git $(LINUX_DIR)
-	patch -d $@ -p 1 < patches/linux-xlnx-$(LINUX_TAG)-config.patch
-	patch -d $@ -p 1 < patches/linux-xlnx-$(LINUX_TAG)-eeprom.patch
-	patch -d $@ -p 1 < patches/linux-xlnx-$(LINUX_TAG)-lantiq.patch
-	patch -d $@ -p 1 < patches/linux-xlnx-$(LINUX_TAG)-axidma.patch
-	patch -d $@ -p 1 < patches/linux-xlnx-$(LINUX_TAG)-iio-xadc.patch
-#	patch -d $@ -p 1 < patches/linux-xlnx-$(LINUX_TAG)-spidev.patch
-	cp -r patches/lantiq/*  $@/drivers/net/phy/
-	# DMA support related patches
-	#cp -r patches/xilinx/*  $@/drivers/dma/xilinx/
-	cp -r patches/redpitaya $@/drivers/
-	patch -d $@ -p 1 < patches/linux-xlnx-$(LINUX_TAG)-redpitaya.patch
-	# WiFi patches
-	cp -r patches/rtl8192cu $@/drivers/net/wireless/
-	patch -d $@ -p 1 < patches/linux-xlnx-$(LINUX_TAG)-wifi.patch
 
 $(LINUX): $(LINUX_DIR)
 	make -C $< mrproper
@@ -169,7 +166,7 @@ linux-install: linux $(INSTALL_DIR)
 # device tree processing
 ################################################################################
 
-DEVICETREE = $(TMP)/devicetree.dtb
+DEVICETREE = $(TMP)/dts/devicetree.dtb
 
 .PHONY: devicetree devicetree-install
 
@@ -182,20 +179,20 @@ $(DTREE_DIR): $(DTREE_TAR)
 	mkdir -p $@
 	tar -zxf $< --strip-components=1 --directory=$@
 
-$(DEVICETREE): $(DTREE_DIR) linux fpga $(TMP)
-	cp $(FPGA_DIR)/sdk/dts/*.dtsi     $(TMP)
-	cp $(FPGA_DIR)/sdk/dts/system.dts $(TMP)/devicetree.dts
-	patch $(TMP)/zynq-7000.dtsi patches/zynq-7000.patch
-	patch $(TMP)/pl.dtsi        patches/pl.patch
-	patch $(TMP)/devicetree.dts patches/devicetree.patch
-	$(LINUX_DIR)/scripts/dtc/dtc -I dts -O dtb -o $(DEVICETREE) -i $(TMP) $(TMP)/devicetree.dts
-	tools/dtc/bin/dtc -O dtb -o $(TMP)/amba_pl.dtbo -b 0 -@ patches/amba_pl.dts
+$(DEVICETREE): $(DTREE_DIR) $(INSTALL_DIR)/fpga $(TMP)
+	cp -r $(INSTALL_DIR)/fpga/$(FPGA_PRJ)/dts $(TMP)
+	cat   $(TMP)/dts/fpga.dts >> $(TMP)/dts/system.dts
+	tools/dtc/dtc -@ -I dts -O dtb -o $(DEVICETREE) -i $(TMP)/dts -i fpga/dts $(TMP)/dts/system.dts
+	tools/dtc/dtc -@ -I dts -O dtb -o $(TMP)/dts/amba_pl.dtbo patches/devicetree/amba_pl.dts
+	# create device tree source from binary for reference
+	tools/dtc/dtc -I dtb -O dts --sort -o $(TMP)/dts/dtraw.dts $(DEVICETREE)
 
 devicetree-install: $(DEVICETREE) $(INSTALL_DIR)
-	cp $(DEVICETREE)        $(INSTALL_DIR)
-	cp $(TMP)/amba_pl.dtbo  $(INSTALL_DIR)
-	cp patches/amba_pl.sh   $(INSTALL_DIR)
-	cp patches/rmamba_pl.sh $(INSTALL_DIR)
+	cp $(DEVICETREE)                   $(INSTALL_DIR)
+	cp $(TMP)/dts/dtraw.dts            $(INSTALL_DIR)
+	cp $(TMP)/dts/amba_pl.dtbo         $(INSTALL_DIR)
+	cp patches/devicetree/amba_pl.sh   $(INSTALL_DIR)
+	cp patches/devicetree/rmamba_pl.sh $(INSTALL_DIR)
 
 ################################################################################
 # boot file generator
@@ -207,7 +204,10 @@ BOOT = $(INSTALL_DIR)/boot.bin
 
 boot: $(BOOT)
 
-$(BOOT): fpga $(UBOOT) $(INSTALL_DIR)
+FPGA = $(INSTALL_DIR)/fpga/$(FPGA_PRJ)/fpga.bit
+FSBL = $(INSTALL_DIR)/fpga/$(FPGA_PRJ)/fsbl.elf
+
+$(BOOT): $(INSTALL_DIR)/fpga $(UBOOT) $(INSTALL_DIR)
 	@echo img:{[bootloader] $(FSBL) $(FPGA) $(UBOOT) } > boot_uboot.bif
 	bootgen -image boot_uboot.bif -w -o $@
 
@@ -220,11 +220,6 @@ ZIPFILE=ecosystem-$(VERSION).zip
 zip: $(ZIPFILE)
 
 $(ZIPFILE): install
-	# copy FPGA bitstream images and decompress them
-	mkdir -p               $(INSTALL_DIR)/fpga
-	cp fpga/archive/*.xz   $(INSTALL_DIR)/fpga
-	cd                     $(INSTALL_DIR)/fpga; xz -df *.xz
-	cp $(FPGA)             $(INSTALL_DIR)/fpga/fpga_la.bit
 	cp -r OS/filesystem/*  $(INSTALL_DIR)
 	# create version file
 	@echo "$$GREET_MSG" >  $(INSTALL_DIR)/version.txt
@@ -237,7 +232,7 @@ $(ZIPFILE): install
 
 clean:
 	-make -C $(LINUX_DIR) clean
-	make -C $(FPGA_DIR) clean
+	make -C fpga clean
 	-make -C $(UBOOT_DIR) clean
 	# todo, remove downloaded libraries and symlinks
 	$(RM) $(INSTALL_DIR) -rf

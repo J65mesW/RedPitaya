@@ -6,28 +6,13 @@
 # https://raw.githubusercontent.com/RedPitaya/RedPitaya/master/COPYING
 ################################################################################
 
-# Copy files to the boot file system
-unzip ecosystem*.zip -d $BOOT_DIR
-
-# Systemd services
-install -v -m 664 -o root -d                                                         $ROOT_DIR/var/log/redpitaya_nginx
-install -v -m 664 -o root -D $OVERLAY/etc/systemd/system/redpitaya_discovery.service $ROOT_DIR/etc/systemd/system/redpitaya_discovery.service
-install -v -m 664 -o root -D $OVERLAY/etc/systemd/system/redpitaya_nginx.service     $ROOT_DIR/etc/systemd/system/redpitaya_nginx.service
-install -v -m 664 -o root -D $OVERLAY/etc/systemd/system/sockproc.service            $ROOT_DIR/etc/systemd/system/sockproc.service
-install -v -m 664 -o root -D $OVERLAY/etc/systemd/system/redpitaya_scpi.service      $ROOT_DIR/etc/systemd/system/redpitaya_scpi.service
-install -v -m 664 -o root -D $OVERLAY/etc/sysconfig/redpitaya                        $ROOT_DIR/etc/sysconfig/redpitaya
-# TODO: this Wyliodrin service is only here since wyliodrin.sh can not be run in a virtualized environment
-# Wyliodrin service
-install -v -m 664 -o root -D $OVERLAY/etc/systemd/system/redpitaya_wyliodrin.service $ROOT_DIR/etc/systemd/system/redpitaya_wyliodrin.service
+################################################################################
+# install various packages
+################################################################################
 
 chroot $ROOT_DIR <<- EOF_CHROOT
-systemctl enable redpitaya_discovery
-systemctl enable redpitaya_nginx
-systemctl enable sockproc
-#systemctl enable redpitaya_scpi
-
 # applications used by Bazaar
-apt-get -y install wget
+apt-get -y install wget gawk
 
 # libraries used by Bazaar
 apt-get -y install libluajit-5.1-2 libpcre3 zlib1g lua-cjson unzip
@@ -44,8 +29,10 @@ apt-get -y install libcurl4-openssl-dev
 apt-get -y install libssl-dev
 apt-get -y install libjpeg-dev
 
-# libraries used by lcrmeter
-sudo apt-get install -y libi2c-dev i2c-tools
+# JSON libraries
+apt-get -y install libjson-c-dev rapidjson-dev
+# Websockets++ library
+apt-get -y install libwebsocketpp-dev
 
 # tools used to compile applications
 apt-get -y install zip
@@ -53,14 +40,45 @@ apt-get -y install zip
 # debug tools
 apt-get -y install gdb cgdb libcunit1-ncurses-dev
 
+# miscelaneous tools
+apt-get -y install bc
 EOF_CHROOT
 
-# profile for PATH variables, ...
-install -v -m 664 -o root -D $OVERLAY/etc/profile.d/profile.sh   $ROOT_DIR/etc/profile.d/profile.sh
-install -v -m 664 -o root -D $OVERLAY/etc/profile.d/alias.sh     $ROOT_DIR/etc/profile.d/alias.sh
-install -v -m 664 -o root -D $OVERLAY/etc/profile.d/redpitaya.sh $ROOT_DIR/etc/profile.d/redpitaya.sh
+################################################################################
+# systemd services
+################################################################################
 
-# remove existing MOTD and replace it with a link to Red Pitaya version.txt
-# TODO this approach worked on Debian but does not work well on Ubuntu 16.04
-#rm $ROOT_DIR/etc/motd
-#ln -s /opt/redpitaya/version.txt $ROOT_DIR/etc/motd 
+install -v -m 664 -o root -d                                                         $ROOT_DIR/var/log/redpitaya_nginx
+install -v -m 664 -o root -D $OVERLAY/etc/systemd/system/redpitaya_nginx.service     $ROOT_DIR/etc/systemd/system/redpitaya_nginx.service
+install -v -m 664 -o root -D $OVERLAY/etc/systemd/system/sockproc.service            $ROOT_DIR/etc/systemd/system/sockproc.service
+install -v -m 664 -o root -D $OVERLAY/etc/systemd/system/redpitaya_scpi.service      $ROOT_DIR/etc/systemd/system/redpitaya_scpi.service
+install -v -m 664 -o root -D $OVERLAY/etc/systemd/system/scpi.service                $ROOT_DIR/etc/systemd/system/scpi.service
+install -v -m 664 -o root -D $OVERLAY/etc/sysconfig/redpitaya                        $ROOT_DIR/etc/sysconfig/redpitaya
+
+chroot $ROOT_DIR <<- EOF_CHROOT
+systemctl enable redpitaya_nginx
+systemctl enable sockproc
+#systemctl enable redpitaya_scpi
+EOF_CHROOT
+
+################################################################################
+# create users and groups
+################################################################################
+
+chroot $ROOT_DIR <<- EOF_CHROOT
+# add system groups for running daemons
+# for running bazar (Nginx), sockproc
+useradd --system redpitaya_nginx
+useradd --system scpi
+
+# add HW access rights to Nginx user "redpitaya_nginx"
+usermod -a -G xdevcfg,uio,xadc,led,gpio,spi,i2c,eeprom,dialout,dma redpitaya_nginx
+
+# add HW access rights to users "scpi"
+usermod -a -G uio,xadc,led,gpio,spi,i2c,eeprom,dialout,dma scpi
+
+# TODO: Bazaar code should be moved from /dev/mem to /dev/uio/*
+usermod -a -G kmem redpitaya
+usermod -a -G kmem redpitaya_nginx
+usermod -a -G kmem scpi
+EOF_CHROOT

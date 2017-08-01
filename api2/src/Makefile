@@ -27,12 +27,14 @@ INSTALL_DIR ?= .
 SOURCE_DIR  = .
 OUTPUT_DIR  = ../lib
 
+SHARED_LIB=$(OUTPUT_DIR)/librp2.so
+STATIC_LIB=$(OUTPUT_DIR)/librp2.a
+
 # Library name
-TARGET=$(OUTPUT_DIR)/librp2.so
+TARGET=$(SHARED_LIB) $(STATIC_LIB)
 
 # List of compiled object files
 OBJECTS =	pdm.o \
-		gpio.o \
 		id.o \
 		muxctl.o \
 		calib.o \
@@ -49,7 +51,7 @@ OBJS = $(patsubst %$(OBJEXT), $(OBJECTS_DIR)/%$(OBJEXT), $(OBJECTS))
 # GCC compiling & linking flags
 CFLAGS  = -std=gnu99 -Wall -Werror -fPIC -Os -s
 CFLAGS += -DVERSION=$(VERSION) -DREVISION=$(REVISION)
-CFLAGS += -I../include -I../include/redpitaya -I../../patches/redpitaya/
+CFLAGS += -I../include -I../include/redpitaya
 LDFLAGS=-shared -Wl,--version-script=exportmap
 
 # Additional libraries which needs to be dynamically linked to the executable
@@ -71,21 +73,26 @@ $(OBJECTS_DIR)/%.o:$(SOURCE_DIR)/%.c
 	@mkdir -p $(@D)
 	$(CC) -c $(CFLAGS) $< -o $@
 
-# Makefile target with rules how to link executable for each target from $(TARGET)
-# list.
-$(TARGET): $(OBJS)
+# Makefile target with rules how to link executable for each target from
+# $(SHARED_LIB) list.
+$(SHARED_LIB): $(OBJS)
 	mkdir -p $(OUTPUT_DIR)
 	$(CC) -o $@ $^ $(CFLAGS) $(LIBS) $(LDFLAGS)
+
+$(STATIC_LIB): $(OBJS)
+	mkdir -p $(OUTPUT_DIR)
+	$(AR) rcs $@ $^
 
 # Clean target - when called it cleans all object files and executables.
 clean:
 	rm -f $(TARGET) $(OBJECTS_DIR)/*.o
-	rm -rf $(INSTALL_DIR)/lib
 
 # Install target - creates 'bin/' sub-directory in $(INSTALL_DIR) and copies all
 # executables to that location.
 install:
 	mkdir -p $(INSTALL_DIR)/lib
 	mkdir -p $(INSTALL_DIR)/include
+	mkdir -p $(INSTALL_DIR)/include/api2
 	cp  $(TARGET) $(INSTALL_DIR)/lib
 	cp -r ../include/* $(INSTALL_DIR)/include
+	cp -r *.h $(INSTALL_DIR)/include/api2

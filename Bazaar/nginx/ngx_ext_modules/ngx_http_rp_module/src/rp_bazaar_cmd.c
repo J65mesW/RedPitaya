@@ -18,7 +18,7 @@
 #include <ngx_http.h>
 #include <ngx_log.h>
 
-#include "redpitaya/http.h"
+#include "http.h"
 #include "ngx_http_rp_module.h"
 #include "rp_bazaar_cmd.h"
 #include "rp_bazaar_app.h"
@@ -399,12 +399,10 @@ int rp_bazaar_apps(ngx_http_request_t *r,
 int rp_bazaar_start(ngx_http_request_t *r,
                     cJSON **json_root, int argc, char **argv)
 {
-    int demo = 0;
     char* url = strstr(argv[0], "?type=demo");
     if (url)
     {
         *url = '\0';
-        demo = 1;
     }
     else
     {
@@ -484,8 +482,8 @@ int rp_bazaar_start(ngx_http_request_t *r,
             case FPGA_OK:
             {
                 if (fpga_name)  free(fpga_name);
-                char dmaDrv[len];
                 len = strlen((char *)lc->bazaar_dir.data) + strlen(argv[0]) + strlen("/fpga.sh") + 2;
+                char dmaDrv[len];
                 sprintf(dmaDrv, "%s/%s/fpga.sh", lc->bazaar_dir.data, argv[0]);
                 if (system(dmaDrv))
                     fprintf(stderr, "Problem running %s\n", dmaDrv);
@@ -533,16 +531,6 @@ int rp_bazaar_start(ngx_http_request_t *r,
         params.set_signals_func = rp_module_ctx.app.ws_set_signals_func;
         params.gzip_func = rp_module_ctx.app.ws_gzip_func;
         fprintf(stderr, "Starting WS-server\n");
-
-        if (rp_module_ctx.app.verify_app_license_func)
-            if (rp_module_ctx.app.verify_app_license_func(argv[0]))
-                demo = 1;
-
-        if (demo)
-        {
-            fprintf(stderr, "Run in demo mode\n");
-            rp_module_ctx.app.ws_set_params_demo_func(1);
-        }
 
         start_ws_server(&params);
     }

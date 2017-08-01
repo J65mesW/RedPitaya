@@ -20,25 +20,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <title>Red Pitaya</title>
     <link rel="stylesheet" href="../assets/bootstrap/css/bootstrap.min.css">
+    <link rel="stylesheet" href="../assets/loader.css?1"  type="text/css">
+    <link rel="stylesheet" href="../assets/popupstack.css" type="text/css" />
+    <link rel="stylesheet" href="../assets/help-system/help-system.css" type="text/css" />
     <link rel="stylesheet" href="css/style.css?2">
-    <script src="js/jquery-2.1.3.min.js"></script>
-    <script src="js/jquery-ui.min.js"></script>
-    <script src="js/jquery.ui.touch-punch.min.js"></script>
-    <script src="js/jquery.mousewheel.min.js"></script>
+    <script src="../assets/jquery/jquery-2.1.3.min.js"></script>
+    <script src="../assets/jquery/jquery-ui.min.js"></script>
+    <script src="../assets/jquery/jquery.ui.touch-punch.min.js"></script>
+    <script src="../assets/jquery/jquery.mousewheel.min.js"></script>
+    <script src="../assets/jquery/jquery.cookie.js"></script>
+    <script src="../assets/jquery/jquery.browser.js"></script>
     <script src="../assets/bootstrap/js/bootstrap.min.js"></script>
-    <link href="../assets/loader.css?1" rel="stylesheet" type="text/css">
-    <script src="js/fastclick.min.js"></script>
-    <script src="js/jquery.cookie.js"></script>
-    <script src="js/scope.js?3"></script>
-    <script src="../assets/analytics-core.js"></script>
-    <script src="js/analytics-main.js"></script>
-    <script src="js/jquery.browser.js"></script>
-    <script src="../assets/offline.min.js"></script>
-    <script src="../assets/onlinecheck.js"></script>
+    <script src="../assets/fastclick.min.js"></script>
     <script src="../assets/browsercheck.js"></script>
+    <script src="../assets/analytics-core.js"></script> 
+    <script src="../assets/offline.min.js"></script>
+    <script src="../assets/onlinecheck.js"></script>   
     <script src="../assets/popupstack.js"></script>
-    <script src="../assets/jquery.browser.js"></script>
-    <link href="../assets/popupstack.css" rel="stylesheet" type="text/css" />
+    <script src="../assets/help-system/help-system.js"></script>
+    <script src="js/help-updater.js"></script>
+    <script src="js/scope.js?3"></script>
+    <script src="js/analytics-main.js"></script>
+
 </head>
 
 <body>
@@ -60,9 +63,9 @@
                             <span class="icon-bar"></span>
                         </button>
                         <a class="navbar-brand" href="/">
-                            <img class="back-btn" src="img/arrow_nav_left.png">
+                            <img class="back-btn" src="../assets/images/navigation_arrow_left.png">
                         </a>
-                        <img class="logo" width=110 src="img/logo.png">
+                        <img class="logo" width=110 src="../assets/images/navigation_logo.png">
                     </div>
                     <div style="font-size: 14pt; color: white; text-align:center; padding-top: 7px;">
                         RedPitaya update manager
@@ -87,12 +90,20 @@
                                 </tr>
                                 <tr id="step_3" class="step">
                                     <td class="step_desc">Step 3. Checking for updates
-                                        <p class="select_ver">Select version to install:
+                                        <p class="select_ver">Select release type:
+                                            <select id="ecosystem_type" >
+												<option value="1">Stable 0.97</option>
+												<option value="2">Stable 0.96</option>
+												<option value="3">Beta</option>
+											</select>
+                                        </p>
+                                        <p id="warn">Warning: Install this versions on your own risk!</p>
+                                        <p class="select_ver" id="select_ver">Select version to install:
                                             <select id="ecosystem_ver" disabled>
                                             </select><span id="and_click"> and click </span><button id="apply">Apply</button>
+											<a id="" href="#" data-toggle="modal" data-target="#changelog">CHANGELOG</a>
                                         </p>
-                                        <p class="error_msg">Unable to connect to update server. Please check your internet connection or try again later</p>
-                                        <p class="warn_msg">Warning: Downgrading the OS may cause unpredictable behavior</p>
+                                        <p class="error_msg">Unable to connect to update server. Please check your internet connection or try again later.<button id="retry">Retry</button></p>
                                     </td>
                                     <td class="step_icon"><img style="display: none" src=""></td>
                                 </tr>
@@ -127,6 +138,17 @@
             </div>
         </div>
     </div>
+    <div class="modal fade" id="changelog" role="dialog" data-backdrop="static">
+        <div class="modal-dialog modal-nm" id="modal">
+            <div class="modal-content">
+                <div class="modal-body">
+                    <div id="changelog_text">
+          			</div>
+					<button type="button" class="btn" data-dismiss="modal">OK</button>
+                </div>
+           </div>
+        </div>
+	</div>
 </body>
 
 </html>

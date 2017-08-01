@@ -47,8 +47,6 @@ const char *c_ws_set_params_str   = "ws_set_params";
 const char *c_ws_get_params_str   = "ws_get_params";
 const char *c_ws_set_signals_str  = "ws_set_signals";
 const char *c_ws_get_signals_str  = "ws_get_signals";
-const char *c_ws_set_demo_mode_str  = "ws_set_demo_mode";
-const char *c_verify_app_license_str  = "verify_app_license";
 const char* c_ws_gzip_str = "ws_gzip";
 // end web socket function str
 
@@ -81,21 +79,17 @@ int rp_bazaar_get_mac(const char* nic, char *mac)
 int rp_bazaar_get_dna(unsigned long long *dna)
 {
     void *page_ptr;
-    long page_addr, page_size = sysconf(_SC_PAGESIZE);
-    const long c_dna_fpga_base_addr = 0x40000000;
     const long c_dna_fpga_base_size = 0x20;
     int fd = -1;
 
-    fd = open("/dev/mem", O_RDONLY | O_SYNC);
+    fd = open("/dev/uio/api", O_RDONLY | O_SYNC);
     if(fd < 0) {
-        fprintf(stderr, "open(/dev/mem) failed: %s\n", strerror(errno));
+        fprintf(stderr, "ERROR: failed open of UIO device: %s\n", strerror(errno));
         return -1;
     }
 
-    page_addr = c_dna_fpga_base_addr & (~(page_size-1));
-
     page_ptr = mmap(NULL, c_dna_fpga_base_size, PROT_READ,
-                          MAP_SHARED, fd, page_addr);
+                          MAP_SHARED, fd, 0x0);
 
     if((void *)page_ptr == MAP_FAILED) {
         fprintf(stderr, "mmap() failed: %s\n", strerror(errno));
@@ -216,63 +210,6 @@ int get_info(cJSON **info, const char *dir, const char *app_id, ngx_pool_t *pool
 }
 
 
-/* Returns 1 if application controller within the "app_id"
- * application directory is OK.
- * Returns 0 otherwise.
- */
-inline int is_registered(const char *dir,
-                            const char *app_id,
-                            const char *fname)
-{
-    int status;
-    char file [strlen(dir) + strlen(app_id) + strlen(fname) + 3];
-    struct stat stat_buf;
-    const mode_t perms = S_IRUSR | S_IXUSR;
-
-    fprintf(stderr, "is_registered dir: %s\n app_id: %s\n fname: %s\n", dir, app_id, fname);
-    sprintf(file, "%s/%s/%s", dir, app_id, fname);
-
-    if(stat((const char *)file, &stat_buf) < 0) {
-        /* File does not exist */
-        fprintf(stderr, "%s does not exist.\n", file);
-        return 0;
-    }
-    if((stat_buf.st_mode & perms) != perms) {
-        /* Permissions wrong */
-        fprintf(stderr, "%s exists but has wrong permissions.\n", file);
-        return 0;
-    }
-
-    rp_bazaar_app_t app;
-    ngx_memset(&app, 0, sizeof(rp_bazaar_app_t));
-
-    /* Open and check init, exit and desc symbols - if they exist,
-     * controller is OK.
-     */
-
-    status = rp_bazaar_app_load_module(file, &app);
-    if(status < 0) {
-        fprintf(stderr, "Problem loading app (return %d): %s\n", status, dlerror());
-        rp_bazaar_app_unload_module(&app);
-        return 0;
-    }
-
-    fprintf(stderr, "App loaded %s\n", app_id);
-
-    int is_reg = 1;
-    if(app.verify_app_license_func)
-        is_reg = !app.verify_app_license_func(app_id); // 1 - is registered
-
-    rp_bazaar_app_unload_module(&app);
-
-    if(is_reg)
-        fprintf(stderr, "App '%s' is registered\n", app_id);
-    else
-        fprintf(stderr, "App '%s' is not registered\n", app_id);
-
-    return is_reg;
-}
-
 inline int is_controller_ok(const char *dir,
                             const char *app_id,
                             const char *fname)
@@ -377,16 +314,9 @@ int rp_bazaar_app_get_local_list(const char *dir, cJSON **json_root,
         return rp_module_cmd_error(json_root, "Can not open apps directory",
                                    strerror(errno), pool);
 
-    int lcr_meter_found = 0;
     while((ep = readdir (dp))) {
         const char *app_id = ep->d_name;
         cJSON *info = NULL;
-
-        if (!strcmp("lcr_meter", app_id)) {
-			lcr_meter_found = 1;
-			continue;
-		}
-
         /* check if structure is correct, we need:
          *  <app_id>/info/info.json
          *  <app_id>/info/icon.png
@@ -407,12 +337,10 @@ int rp_bazaar_app_get_local_list(const char *dir, cJSON **json_root,
         if (info == NULL)
             continue;
 
-       /* We have an application */
-        int demo = !is_registered(dir, app_id, "controllerhf.so");
-
+        /* We have an application */
         if (verbose) {
             /* Attach whole info JSON */
-            cJSON_AddItemToObject(info, "type", cJSON_CreateString(demo ? "demo" : "run", pool), pool);
+            cJSON_AddItemToObject(info, "type", cJSON_CreateString("run", pool), pool);
             cJSON_AddItemToObject(*json_root, app_id, info, pool);
         } else {
             /* Include version only */
@@ -425,7 +353,7 @@ int rp_bazaar_app_get_local_list(const char *dir, cJSON **json_root,
             }
 
             cJSON_AddItemToObject(*json_root, app_id, cJSON_CreateString(j_ver->valuestring, pool), pool);
-            cJSON_AddItemToObject(*json_root, "type", cJSON_CreateString(demo ? "demo" : "run", pool), pool);
+            cJSON_AddItemToObject(*json_root, "type", cJSON_CreateString("run", pool), pool);
             cJSON_Delete(j_ver, pool);
             cJSON_Delete(info, pool);
         }
@@ -433,41 +361,6 @@ int rp_bazaar_app_get_local_list(const char *dir, cJSON **json_root,
     }
 
     closedir(dp);
-
-	// lcr_meter
-    if (lcr_meter_found) {
-        cJSON *info = NULL;
-
-        if (!is_readable(dir, "lcr_meter", "info/icon.png"))
-            return 0;
-        if (!is_readable(dir, "lcr_meter", "fpga.conf"))
-            return 0;
-        if (!is_controller_ok(dir, "lcr_meter", "controllerhf.so"))
-            return 0;
-        if (!get_info(&info, dir, "lcr_meter", pool))
-            return 0;
-        if (info == NULL)
-            return 0;
-        int demo = !is_registered(dir, "lcr_meter", "controllerhf.so");
-
-        if (verbose) {
-            cJSON_AddItemToObject(info, "type", cJSON_CreateString(demo ? "demo" : "run", pool), pool);
-            cJSON_AddItemToObject(*json_root, "lcr_meter", info, pool);
-        } else {
-            cJSON *j_ver = cJSON_GetObjectItem(info, "version");
-            if(j_ver == NULL) {
-                fprintf(stderr, "Cannot get version from info JSON.\n");
-                cJSON_Delete(info, pool);
-                return 0;
-            } else {
-				cJSON_AddItemToObject(*json_root, "lcr_meter", cJSON_CreateString(j_ver->valuestring, pool), pool);
-				cJSON_AddItemToObject(*json_root, "type", cJSON_CreateString(demo ? "demo" : "run", pool), pool);
-				cJSON_Delete(j_ver, pool);
-				cJSON_Delete(info, pool);
-			}
-        }
-	}
-
     return 0;
 }
 
@@ -564,20 +457,6 @@ int rp_bazaar_app_load_module(const char *app_file, rp_bazaar_app_t *app)
     {
        	app->ws_api_supported = 0;
         fprintf(stderr, "Cannot resolve '%s' function.\n", c_ws_get_signals_str);
-    }
-
-    app->ws_set_params_demo_func = dlsym(app->handle, c_ws_set_demo_mode_str);
-    if(!app->ws_set_params_demo_func)
-    {
-       	app->ws_api_supported = 0;
-        fprintf(stderr, "Cannot resolve '%s' function.\n", c_ws_set_demo_mode_str);
-    }
-
-    app->verify_app_license_func = dlsym(app->handle, c_verify_app_license_str);
-    if(!app->verify_app_license_func)
-    {
-       	app->ws_api_supported = 0;
-        fprintf(stderr, "Cannot resolve '%s' function.\n", c_verify_app_license_str);
     }
 
     app->ws_gzip_func = dlsym(app->handle, c_ws_gzip_str);

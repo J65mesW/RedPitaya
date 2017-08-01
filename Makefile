@@ -4,21 +4,22 @@ DL ?= dl
 INSTALL_DIR ?= build
 
 ################################################################################
+# versioning system
+################################################################################
+
+VER := $(shell cat apps-tools/ecosystem/info/info.json | grep version | sed -e 's/.*:\ *\"//' | sed -e 's/-.*//')
+BUILD_NUMBER ?= 0
+REVISION ?= $(shell git rev-parse --short HEAD)
+VERSION = $(VER)-$(BUILD_NUMBER)-$(REVISION)
+export BUILD_NUMBER
+export REVISION
+export VERSION
+
+################################################################################
 #
 ################################################################################
 
-define GREET_MSG
-##############################################################################
-# Red Pitaya GNU/Linux Ecosystem
-# Version: $(VER)
-# Branch: $(GIT_BRANCH_LOCAL)
-# Build: $(BUILD_NUMBER)
-# Commit: $(GIT_COMMIT)
-##############################################################################
-endef
-export GREET_MSG
-
-all: api libredpitaya nginx scpi examples rp_communication apps-tools apps-pro
+all:  sdr api nginx scpi-new scpi examples rp_communication apps-tools apps-pro
 
 $(DL):
 	mkdir -p $@
@@ -30,24 +31,27 @@ $(INSTALL_DIR):
 # API libraries
 ################################################################################
 
-LIBRP_DIR       = api/rpbase
+LIBRP_DIR       = api
+LIBRP2_DIR      = api2
 LIBRPLCR_DIR	= Applications/api/rpApplications/lcr_meter
 LIBRPAPP_DIR    = Applications/api/rpApplications
 ECOSYSTEM_DIR   = Applications/ecosystem
-LIBRP2_DIR      = api2
 
-.PHONY: api2 api librp libredpitaya
+.PHONY: api api2 librp librp1
 .PHONY: librpapp liblcr_meter
 
-libredpitaya:
-	$(MAKE) -C shared
-	$(MAKE) -C shared install INSTALL_DIR=$(abspath $(INSTALL_DIR))
-
 librp:
+	$(MAKE) -C $(LIBRP_DIR) clean
 	$(MAKE) -C $(LIBRP_DIR)
 	$(MAKE) -C $(LIBRP_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
 
+librp1:
+	$(MAKE) -C $(LIBRP1_DIR) clean
+	$(MAKE) -C $(LIBRP1_DIR)
+	$(MAKE) -C $(LIBRP1_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
+
 librp2:
+	$(MAKE) -C $(LIBRP2_DIR) clean
 	$(MAKE) -C $(LIBRP2_DIR)
 	$(MAKE) -C $(LIBRP2_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
 
@@ -57,10 +61,12 @@ ifdef ENABLE_LICENSING
 api: librp librpapp liblcr_meter
 
 librpapp:
+	$(MAKE) -C $(LIBRPAPP_DIR) clean
 	$(MAKE) -C $(LIBRPAPP_DIR)
 	$(MAKE) -C $(LIBRPAPP_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
 
 liblcr_meter:
+	$(MAKE) -C $(LIBRPLCR_DIR) clean
 	$(MAKE) -C $(LIBRPLCR_DIR)
 	$(MAKE) -C $(LIBRPLCR_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
 
@@ -85,8 +91,8 @@ IDGEN           = $(INSTALL_DIR)/sbin/idgen
 SOCKPROC        = $(INSTALL_DIR)/sbin/sockproc
 
 WEBSOCKETPP_TAG = 0.7.0
-LUANGINX_TAG    = v0.10.2
-NGINX_TAG       = 1.10.0
+LUANGINX_TAG    = v0.10.7
+NGINX_TAG       = 1.11.4
 SOCKPROC_TAG    = master
 
 WEBSOCKETPP_URL = https://github.com/zaphoyd/websocketpp/archive/$(WEBSOCKETPP_TAG).tar.gz
@@ -149,7 +155,8 @@ $(NGINX_SRC_DIR): $(NGINX_TAR)
 	mkdir $@/conf/lua/
 	cp -fr patches/lua/* $@/conf/lua/
 
-$(NGINX): libredpitaya $(CRYPTOPP_DIR) $(WEBSOCKETPP_DIR) $(LIBJSON_DIR) $(LUANGINX_DIR) $(NGINX_SRC_DIR)
+$(NGINX): $(CRYPTOPP_DIR) $(WEBSOCKETPP_DIR) $(LIBJSON_DIR) $(LUANGINX_DIR) $(NGINX_SRC_DIR)
+	$(MAKE) -C $(NGINX_DIR) clean
 	$(MAKE) -C $(NGINX_DIR)
 	$(MAKE) -C $(NGINX_DIR) install DESTDIR=$(abspath $(INSTALL_DIR))
 	mkdir -p $(INSTALL_DIR)/www/conf/lua
@@ -160,6 +167,7 @@ ifdef ENABLE_LICENSING
 IDGEN_DIR = Applications/idgen
 
 $(IDGEN):
+	$(MAKE) -C $(IDGEN_DIR) clean
 	$(MAKE) -C $(IDGEN_DIR)
 	$(MAKE) -C $(IDGEN_DIR) install DESTDIR=$(abspath $(INSTALL_DIR))
 
@@ -196,11 +204,37 @@ $(SCPI_PARSER_TAR): | $(DL)
 $(SCPI_PARSER_DIR): $(SCPI_PARSER_TAR)
 	mkdir -p $@
 	tar -xzf $< --strip-components=1 --directory=$@
-#	patch -d $@ -p1 < patches/scpi-parser-$(SCPI_PARSER_TAG).patch
 
 scpi: api $(INSTALL_DIR) $(SCPI_PARSER_DIR)
+	$(MAKE) -C $(SCPI_SERVER_DIR) clean
 	$(MAKE) -C $(SCPI_SERVER_DIR)
 	$(MAKE) -C $(SCPI_SERVER_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
+
+################################################################################
+# SCPI server
+################################################################################
+
+.PHONY: scpi-new
+
+scpi-new:
+	meson builddir --prefix $(abspath $(INSTALL_DIR)) --buildtype release
+	cd builddir && ninja install
+
+################################################################################
+# SDR
+################################################################################
+
+.PHONY: sdr
+
+# git clone https://github.com/RedPitaya/red-pitaya-notes.git -b charly25ab
+# ZIP file name should be updated for each new build
+SDR_ZIP = stemlab_sdr_transceiver_hpsdr-0.94-1654.zip
+SDR_URL = http://downloads.redpitaya.com/downloads/charly25ab/$(SDR_ZIP)
+
+sdr: | $(DL)
+	curl -L $(SDR_URL) -o $(DL)/$(SDR_ZIP)
+	mkdir -p $(INSTALL_DIR)/www/apps
+	unzip $(DL)/$(SDR_ZIP) -d $(INSTALL_DIR)/www/apps
 
 ################################################################################
 # Red Pitaya tools
@@ -210,49 +244,62 @@ LCR_DIR         = Test/lcr
 BODE_DIR        = Test/bode
 MONITOR_DIR     = Test/monitor
 MONITOR_OLD_DIR = Test/monitor_old
+GENERATE_DIR    = Test/generate
+ACQUIRE_DIR     = Test/acquire
 CALIB_DIR       = Test/calib
 CALIBRATE_DIR   = Test/calibrate
+GENERATOR_DIR	= Test/generate
 COMM_DIR        = Examples/Communication/C
 XADC_DIR        = Test/xadc
-DISCOVERY_DIR   = Test/discovery
 LA_TEST_DIR     = api2/test
 
 .PHONY: examples rp_communication
-.PHONY: lcr bode monitor monitor_old calib calibrate discovery laboardtest
+.PHONY: lcr bode monitor monitor_old generator acquire calib calibrate laboardtest
 
-examples: lcr bode monitor monitor_old calib discovery
+examples: lcr bode monitor monitor_old generator acquire calib
 # calibrate laboardtest
 
 lcr:
+	$(MAKE) -C $(LCR_DIR) clean
 	$(MAKE) -C $(LCR_DIR)
 	$(MAKE) -C $(LCR_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
 
 bode:
+	$(MAKE) -C $(BODE_DIR) clean
 	$(MAKE) -C $(BODE_DIR)
 	$(MAKE) -C $(BODE_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
 
 monitor:
+	$(MAKE) -C $(MONITOR_DIR) clean
 	$(MAKE) -C $(MONITOR_DIR)
 	$(MAKE) -C $(MONITOR_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
 
 monitor_old:
+	$(MAKE) -C $(MONITOR_OLD_DIR) clean
 	$(MAKE) -C $(MONITOR_OLD_DIR)
 	$(MAKE) -C $(MONITOR_OLD_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
 
+generator:
+	$(MAKE) -C $(GENERATOR_DIR) clean
+	$(MAKE) -C $(GENERATOR_DIR)
+	$(MAKE) -C $(GENERATOR_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
+
+acquire:
+	$(MAKE) -C $(ACQUIRE_DIR)
+	$(MAKE) -C $(ACQUIRE_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
 
 calib:
+	$(MAKE) -C $(CALIB_DIR) clean
 	$(MAKE) -C $(CALIB_DIR)
 	$(MAKE) -C $(CALIB_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
 
-discovery:
-	$(MAKE) -C $(DISCOVERY_DIR)
-	$(MAKE) -C $(DISCOVERY_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
-
 calibrate: api
+	$(MAKE) -C $(CALIBRATE_DIR) clean
 	$(MAKE) -C $(CALIBRATE_DIR)
 	$(MAKE) -C $(CALIBRATE_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
 
 laboardtest: api2
+	$(MAKE) -C $(LA_TEST_DIR) clean
 	$(MAKE) -C $(LA_TEST_DIR)
 	cp api2/test/laboardtest build/bin/laboardtest
 	cp api2/test/install.sh build/install.sh
@@ -260,7 +307,7 @@ rp_communication:
 	make -C $(COMM_DIR)
 
 ################################################################################
-# Red Pitaya ecosystem and free applications
+# Red Pitaya ecosystem and tools
 ################################################################################
 
 #LIB_BOOTSTRAP_TAG = 3.3.6
@@ -289,29 +336,31 @@ rp_communication:
 
 APP_ECOSYSTEM_DIR        = apps-tools/ecosystem
 APP_SCPIMANAGER_DIR      = apps-tools/scpi_manager
-APP_WYLIODRINMANAGER_DIR = apps-tools/wyliodrin_manager
 APP_NETWORKMANAGER_DIR   = apps-tools/network_manager
 APP_UPDATER_DIR          = apps-tools/updater
+APP_JUPYTERMANAGER_DIR   = apps-tools/jupyter_manager
 
-.PHONY: apps-tools ecosystem updater scpi_manager wyliodrin_manager network_manager
+.PHONY: apps-tools ecosystem updater scpi_manager network_manager jupyter_manager
 
-apps-tools: ecosystem updater scpi_manager wyliodrin_manager network_manager
+apps-tools: ecosystem updater scpi_manager network_manager jupyter_manager
 
 ecosystem:
+	$(MAKE) -C $(APP_ECOSYSTEM_DIR) clean
 	$(MAKE) -C $(APP_ECOSYSTEM_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
 
 updater: ecosystem api $(NGINX)
+	$(MAKE) -C $(APP_UPDATER_DIR) clean
 	$(MAKE) -C $(APP_UPDATER_DIR)
 	$(MAKE) -C $(APP_UPDATER_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
 
 scpi_manager: ecosystem api $(NGINX)
 	$(MAKE) -C $(APP_SCPIMANAGER_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
 
-wyliodrin_manager: ecosystem
-	$(MAKE) -C $(APP_WYLIODRINMANAGER_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
-
 network_manager: ecosystem
 	$(MAKE) -C $(APP_NETWORKMANAGER_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
+
+jupyter_manager:
+	$(MAKE) -C $(APP_JUPYTERMANAGER_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
 
 ################################################################################
 # Red Pitaya ecosystem and free applications
@@ -322,8 +371,9 @@ APPS_FREE_DIR = apps-free
 .PHONY: apps-free
 
 apps-free: lcr bode
-	$(MAKE) -C $(APPS_FREE_DIR) all
-	$(MAKE) -C $(APPS_FREE_DIR) install
+	$(MAKE) -C $(APPS_FREE_DIR) clean
+	$(MAKE) -C $(APPS_FREE_DIR) all INSTALL_DIR=$(abspath $(INSTALL_DIR))
+	$(MAKE) -C $(APPS_FREE_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
 
 apps-free-clean:
 	$(MAKE) -C $(APPS_FREE_DIR) clean
@@ -338,26 +388,36 @@ APP_SCOPEGENPRO_DIR = Applications/scopegenpro
 APP_SPECTRUMPRO_DIR = Applications/spectrumpro
 APP_LCRMETER_DIR    = Applications/lcr_meter
 APP_LA_PRO_DIR 		= Applications/la_pro
+APP_BA_PRO_DIR 		= Applications/ba_pro
 
-.PHONY: apps-pro scopegenpro spectrumpro lcr_meter la_pro
+.PHONY: apps-pro scopegenpro spectrumpro lcr_meter la_pro ba_pro
 
-apps-pro: scopegenpro spectrumpro lcr_meter la_pro
+apps-pro: scopegenpro spectrumpro lcr_meter la_pro ba_pro
 
 scopegenpro: api $(NGINX)
-	$(MAKE) -C $(APP_SCOPEGENPRO_DIR)
+	$(MAKE) -C $(APP_SCOPEGENPRO_DIR) clean
+	$(MAKE) -C $(APP_SCOPEGENPRO_DIR) INSTALL_DIR=$(abspath $(INSTALL_DIR))
 	$(MAKE) -C $(APP_SCOPEGENPRO_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
 
 spectrumpro: api $(NGINX)
-	$(MAKE) -C $(APP_SPECTRUMPRO_DIR)
+	$(MAKE) -C $(APP_SPECTRUMPRO_DIR) clean
+	$(MAKE) -C $(APP_SPECTRUMPRO_DIR) INSTALL_DIR=$(abspath $(INSTALL_DIR))
 	$(MAKE) -C $(APP_SPECTRUMPRO_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
 
 lcr_meter: api $(NGINX)
-	$(MAKE) -C $(APP_LCRMETER_DIR)
+	$(MAKE) -C $(APP_LCRMETER_DIR) clean
+	$(MAKE) -C $(APP_LCRMETER_DIR) INSTALL_DIR=$(abspath $(INSTALL_DIR))
 	$(MAKE) -C $(APP_LCRMETER_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
 
 la_pro: api api2 $(NGINX)
-	$(MAKE) -C $(APP_LA_PRO_DIR)
+	$(MAKE) -C $(APP_LA_PRO_DIR) clean
+	$(MAKE) -C $(APP_LA_PRO_DIR) INSTALL_DIR=$(abspath $(INSTALL_DIR))
 	$(MAKE) -C $(APP_LA_PRO_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
+
+ba_pro: api $(NGINX)
+	$(MAKE) -C $(APP_BA_PRO_DIR) clean
+	$(MAKE) -C $(APP_BA_PRO_DIR) INSTALL_DIR=$(abspath $(INSTALL_DIR))
+	$(MAKE) -C $(APP_BA_PRO_DIR) install INSTALL_DIR=$(abspath $(INSTALL_DIR))
 
 else
 
@@ -371,7 +431,6 @@ endif
 ################################################################################
 
 clean:
-	make -C shared clean
 	# todo, remove downloaded libraries and symlinks
 	make -C $(NGINX_DIR) clean
 	make -C $(MONITOR_DIR) clean

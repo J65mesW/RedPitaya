@@ -248,14 +248,6 @@ typedef struct {
     int32_t  fe_ch2_hi_offs; //!< Front end DC offset, channel B
 } rp_calib_params_t;
 
-typedef struct wf_func_table_t {
-    int (*rp_spectr_wf_init)();
-    int (*rp_spectr_wf_clean)();
-    int (*rp_spectr_wf_clean_map)();
-    int (*rp_spectr_wf_calc)(double *cha_in, double *chb_in, float koeff, float koeff2);
-    int (*rp_spectr_wf_save_jpeg)(const char *wf_file1, const char *wf_file2);
-} wf_func_table_t;
-
 
 /** @name General
  */
@@ -794,7 +786,7 @@ int rp_AcqGetPreTriggerCounter(uint32_t* value);
  * @return If the function is successful, the return value is RP_OK.
  * If the function is unsuccessful, the return value is any of RP_E* values that indicate an error.
  */
-int rp_AcqSetTriggerLevel(float voltage);
+int rp_AcqSetTriggerLevel(rp_channel_t channel, float voltage);
 
 /**
  * Gets currently set trigger threshold value in volts

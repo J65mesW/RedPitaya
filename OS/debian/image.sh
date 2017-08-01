@@ -7,6 +7,11 @@
 # https://raw.githubusercontent.com/RedPitaya/RedPitaya/master/COPYING
 ################################################################################
 
+# Optional system variables:
+# TIMEZONE - it is written into /etc/timezone
+# 
+
+
 ################################################################################
 # prepating image
 ################################################################################
@@ -34,15 +39,15 @@ parted -s $DEVICE mklabel msdos
 parted -s $DEVICE mkpart primary fat16   4MB 128MB
 parted -s $DEVICE mkpart primary ext4  128MB 100%
 
-BOOT_DEV=/dev/`lsblk -lno NAME $DEVICE | sed '2!d'`
-ROOT_DEV=/dev/`lsblk -lno NAME $DEVICE | sed '3!d'`
+BOOT_DEV=/dev/`lsblk -lno NAME -x NAME $DEVICE | sed '2!d'`
+ROOT_DEV=/dev/`lsblk -lno NAME -x NAME $DEVICE | sed '3!d'`
 
 # Create file systems
 mkfs.vfat -v    $BOOT_DEV
 mkfs.ext4 -F -j $ROOT_DEV
 
 ################################################################################
-# umount image
+# mount image
 ################################################################################
 
 # Mount file systems
@@ -54,7 +59,7 @@ mount $ROOT_DEV $ROOT_DIR
 # install OS
 ################################################################################
 
-. OS/debian/ubuntu.sh 
+. OS/debian/ubuntu.sh 2>&1 | tee $ROOT_DIR/buildlog.txt
 
 ################################################################################
 # umount image

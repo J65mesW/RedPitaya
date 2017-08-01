@@ -1,16 +1,12 @@
 #include <stdio.h>
 #include <cstring>
+#include <map>
 #include "DataManager.h"
 #include "CustomParameters.h"
 #include "misc.h"
 
-#ifdef ENABLE_LICENSING
-#include "LicenseVerificator.h"
-#endif
-
 #include "gziping.h"
 
-CBooleanParameter IsDemoParam("is_demo", CBaseParameter::RO, false, 1);
 CStringParameter InCommandParam("in_command", CBaseParameter::WO, "", 1);
 CStringParameter OutCommandParam("out_command", CBaseParameter::RO, "", 1);
 
@@ -232,6 +228,16 @@ void CDataManager::SendAllParams()
 	m_send_all_params = true;
 }
 
+// DEPRECATED
+std::map<std::string, bool> CDataManager::GetFeatures(const std::string& app_id)
+{
+	std::map<std::string, bool> res;
+	res["app"] = true;
+	res["pro"] = true;
+	res["stem14"] = true;
+	return res;
+}
+
 extern "C" int ws_set_params(const char *_params)
 {
 	CDataManager * man = CDataManager::GetInstance();
@@ -324,22 +330,6 @@ extern "C" int ws_get_signals_interval(void)
 		return res;
 	}
 	return 0;
-}
-
-extern "C" int ws_set_demo_mode(int a)
-{
-	dbg_printf("Set demo mode\n");
-	IsDemoParam.Set(true);
-	return 0;
-}
-
-extern "C" int verify_app_license(const char* app_id)
-{
-#ifdef ENABLE_LICENSING
-	return verify_app_license_impl(app_id);
-#else
-	return 0;
-#endif
 }
 
 extern "C" void ws_gzip(const char* _in, void* _out, size_t* _size)
